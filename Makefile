@@ -32,4 +32,7 @@ $(PASS_SO): $(OBJ_FILES)
 clean::
 	$(QUIET)rm -f $(SRC_DIR)/*.o $(PASS_SO)
 
+opt:
+	opt -load Release/P3.so -$(OPT) tests/$(TEST).ll > $(TEST).opt
+
 

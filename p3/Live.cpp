@@ -1,6 +1,6 @@
-
-#define DEBUG_TYPE "printCode"
 #include "llvm/Pass.h"
+#include "llvm/IR/Function.h"
+#include "llvm/Support/raw_ostream.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/BasicBlock.h"
@@ -15,10 +15,12 @@
 #include <set>
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/CFG.h"
+
 using namespace llvm;
 
 namespace {
-  DenseMap<const Instruction*, int> instMap;
+
+ DenseMap<const Instruction*, int> instMap;
 
   void print_elem(const Instruction* i) {
     errs() << instMap.lookup(i) << " ";
@@ -35,15 +37,19 @@ namespace {
     std::set<const Instruction*> before;
     std::set<const Instruction*> after;
   };
-  
-  class printCode : public FunctionPass {
-  private:
+
+
+  struct Live : public FunctionPass {
+    static char ID;
+    Live() : FunctionPass(ID) {}
 
     void addToMap(Function &F) {
       static int id = 1;
-      for (inst_iterator i = inst_begin(F), E = inst_end(F); i != E; ++i, ++id)
+      for (inst_iterator i = inst_begin(F), E = inst_end(F); i != E; ++i, ++id){
         // Convert the iterator to a pointer, and insert the pair
         instMap.insert(std::make_pair(&*i, id));
+        errs() << ">>>> " << id << ": " <<  i->getName() << "  \n";
+	    }
     }
 
     void computeBBGenKill(Function &F, DenseMap<const BasicBlock*, genKill> &bbMap) 
@@ -155,16 +161,9 @@ namespace {
         }
       }
     }
-    
-  public:
-    static char ID; // Pass identification, replacement for typeid
-    //printCode() : FunctionPass(&ID) {}
 
-    //**********************************************************************
-    // runOnFunction
-    //**********************************************************************
     virtual bool runOnFunction(Function &F) {
-      // Iterate over the instructions in F, creating a map from instruction address to unique integer.
+       // Iterate over the instructions in F, creating a map from instruction address to unique integer.
       addToMap(F);
 
       bool changed = false;
@@ -182,6 +181,8 @@ namespace {
       DenseMap<const Instruction*, beforeAfter> iBAMap;
       computeIBeforeAfter(F, bbBAMap, iBAMap);
 
+      errs() << "BEGIN:" << F.getName() << '\n';
+
       // LOOPA AS INSTRUCOES DE F
       for (inst_iterator i = inst_begin(F), E = inst_end(F); i != E; ++i) {
         //PEGA O MAP COM AS INSTRUCOES VIVAS ANTES E DEPOIS PARA A INTRUCAO I
@@ -193,41 +194,12 @@ namespace {
         errs() << "}\n";
       }
 
-
-
+      errs() << "END:" << F.getName() << '\n';
 
       return changed;
     }
-
-    
-
-    //**********************************************************************
-    // print (do not change this method)
-    //
-    // If this pass is run with -f -analyze, this method will be called
-    // after each call to runOnFunction.
-    //**********************************************************************
-    virtual void print(std::ostream &O, const Module *M) const {
-        O << "This is printCode.\n";
-    }
-
-    //**********************************************************************
-    // getAnalysisUsage
-    //**********************************************************************
-    virtual void getAnalysisUsage(AnalysisUsage &AU) const {
-    };
-    
-
   };
-  char printCode::ID = 0;
-
-  // register the printCode class: 
-  //  - give it a command-line argument
-  //  - a name
-  //  - a flag saying that we don't modify the CFG
-  //  - a flag saying this is not an analysis pass
-  RegisterPass<printCode> X("liveVars", "Live vars analysis",
-			   false, true);
 }
 
-
+char Live::ID = 0;
+static RegisterPass<Live> X("live", "Liveness Pass", false, false);
