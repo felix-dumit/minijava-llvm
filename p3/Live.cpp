@@ -88,12 +88,16 @@ namespace {
       SmallVector<BasicBlock*, 32> workList;
       workList.push_back(--F.end());
 
+
       // REPETE ATE STACK VAZIA (NAO OUVER MUDANCA NO AFTER)
       while (!workList.empty()) {
         BasicBlock *b = workList.pop_back_val();
-        beforeAfter b_beforeAfter = bbBAMap.lookup(b);
+
+      
         // VE SE JA ADICIONOU O PREDECESSOR
         bool shouldAddPred = !bbBAMap.count(b);
+        beforeAfter b_beforeAfter =  bbBAMap.lookup(b);
+      
         genKill b_genKill = bbGKMap.lookup(b);
         
         // Take the union of all successors
@@ -105,23 +109,31 @@ namespace {
         }
 
         // SE INSTRUCOES QUE SAEM DE B SAO DIFERENTES DAS QUE ENTRAM NOS SUCCS
-        if (a != b_beforeAfter.after){
-          shouldAddPred = true;
-          b_beforeAfter.after = a;
+        errs() << "¨¨¨¨A:" << a.size() << "  BFA:" << b_beforeAfter.after.size() << "\n";
+        if (a != b_beforeAfter.after || a.size()==0){
+            shouldAddPred = true;
+        }
+          //errs() << "a!= beforeAfter.after\n";
+        b_beforeAfter.after = a;
           // before = after - KILL + GEN
-          b_beforeAfter.before.clear();
+        b_beforeAfter.before.clear();
           // AFTER - KILL
-          std::set_difference(a.begin(), a.end(), b_genKill.kill.begin(), b_genKill.kill.end(),
+        std::set_difference(a.begin(), a.end(), b_genKill.kill.begin(), b_genKill.kill.end(),
                               std::inserter(b_beforeAfter.before, b_beforeAfter.before.end()));
           // + GEN
-          b_beforeAfter.before.insert(b_genKill.gen.begin(), b_genKill.gen.end());
-        }
+        b_beforeAfter.before.insert(b_genKill.gen.begin(), b_genKill.gen.end());
         
-        // SE B NAO TAVA NO MAP, OU NAO ESTAVA CERTO AINDA
-        if (shouldAddPred)
+
+        
+        if (shouldAddPred){
           // ADICIONA TODOS OS PREDS DE B NA STACK
+          bbBAMap.erase(&*b);
+          bbBAMap.insert(std::make_pair(&*b, b_beforeAfter));
+        // SE B NAO TAVA NO MAP, OU NAO ESTAVA CERTO AINDA
+          errs() << "Caiu no shouldAddPred\n";
           for (pred_iterator PI = pred_begin(b), E = pred_end(b); PI != E; ++PI)
             workList.push_back(*PI);
+        }
       }
     }
     
@@ -164,8 +176,12 @@ namespace {
 
     virtual bool runOnFunction(Function &F) {
        // Iterate over the instructions in F, creating a map from instruction address to unique integer.
+      
+      errs() << "BEGIN:" << F.getName() << '\n';
+
       addToMap(F);
 
+      errs() << "DEPOIS DO ADD\n";
       bool changed = false;
 
       // LLVM Value classes already have use information. But for the sake of learning, we will implement the iterative algorithm.
@@ -173,15 +189,42 @@ namespace {
       DenseMap<const BasicBlock*, genKill> bbGKMap;
       // For each basic block in the function, compute the block's GEN and KILL sets.
       computeBBGenKill(F, bbGKMap);
+      errs() << "DEPOIS DO computeBBGenKill\n";
+      
+      int i = 0;
+      for(DenseMap<const BasicBlock*, genKill>::iterator iter = bbGKMap.begin(); iter!= bbGKMap.end(); ++iter){
+
+        errs() << "%" << i++ << ": { ";
+        std::for_each(iter->second.gen.begin(), iter->second.gen.end(), print_elem);
+        errs() << "} { ";
+        std::for_each(iter->second.kill.begin(), iter->second.kill.end(), print_elem);
+        errs() << "}\n\n";
+      }
+
+
 
       DenseMap<const BasicBlock*, beforeAfter> bbBAMap;
       // For each basic block in the function, compute the block's liveBefore and liveAfter sets.
       computeBBBeforeAfter(F, bbGKMap, bbBAMap);
+      errs() << "DEPOIS DO computeBBBeforeAfter\n";
+
+
+      i = 0;
+      for(DenseMap<const BasicBlock*, beforeAfter>::iterator iter = bbBAMap.begin(); iter!= bbBAMap.end(); ++iter){
+
+        errs() << "%" << i++ << ": { ";
+        std::for_each(iter->second.before.begin(), iter->second.before.end(), print_elem);
+        errs() << "} { ";
+        std::for_each(iter->second.after.begin(), iter->second.after.end(), print_elem);
+        errs() << "}\n";
+      }
+
+      return changed;
 
       DenseMap<const Instruction*, beforeAfter> iBAMap;
       computeIBeforeAfter(F, bbBAMap, iBAMap);
+      errs() << "DEPOIS DO computeIBeforeAfter\n";
 
-      errs() << "BEGIN:" << F.getName() << '\n';
 
       // LOOPA AS INSTRUCOES DE F
       for (inst_iterator i = inst_begin(F), E = inst_end(F); i != E; ++i) {

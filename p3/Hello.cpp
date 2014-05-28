@@ -12,6 +12,7 @@ namespace {
     virtual bool runOnFunction(Function &F) {
       errs() << "Hello: ";
       errs() << F.getName() << '\n';
+
       return false;
     }
   };
