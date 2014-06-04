@@ -1,4 +1,5 @@
 #include "llvm/Pass.h"
+#include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Function.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/IR/Module.h"
@@ -13,6 +14,7 @@
 #include "llvm/IR/User.h"
 #include "llvm/IR/Instructions.h"
 #include <set>
+#include <queue>
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/CFG.h"
 
@@ -74,15 +76,66 @@ namespace {
           // For the KILL set, you can use the set of all instructions
           // that are in the block (which safely includes all of the
           // pseudo-registers assigned to in the block).
-          s.kill.insert(&*i);
+          if(isa<BinaryOperator>(*i) || isa<LoadInst>(*i) || isa<CallInst>(*i)){
+            s.kill.insert(&*i);
+          }
         }
         bbMap.insert(std::make_pair(&*b, s));
       }
     }
 
+    void computeBBBeforeAfter(Function &F, DenseMap<const BasicBlock*, genKill> &bbGKMap,
+                              DenseMap<const BasicBlock*, beforeAfter> &bbBAMap){
+
+
+      bool stop;
+      while(stop){
+
+        stop = true;
+        for (Function::iterator b = F.begin(), e = F.end(); b != e; ++b) {
+
+          
+          beforeAfter ba = bbBAMap.lookup(&*b);
+          beforeAfter oldBA;
+          genKill gk = bbGKMap.lookup(&*b);
+
+
+
+          oldBA.after = ba.after;
+          oldBA.before = ba.before;
+
+          // COMPUTA BEFORE
+          // before = after - KILL + GEN
+          ba.before.clear();
+          // AFTER - KILL
+          std::set_difference(ba.after.begin(), ba.after.end(), gk.kill.begin(), gk.kill.end(),
+                              std::inserter(ba.before, ba.before.end()));
+          // + GEN
+          ba.before.insert(gk.gen.begin(), gk.gen.end());
+
+
+          // COMPUTA AFTER
+          for (succ_iterator SI = succ_begin(b), E = succ_end(b); SI != E; ++SI) {
+            std::set<const Instruction*> s(bbBAMap.lookup(*SI).before);
+            ba.after.insert(s.begin(), s.end());
+          }
+
+          if(!(ba.after == oldBA.after && ba.before == oldBA.before)) stop = false;
+
+          // update
+          bbBAMap.erase(&*b);
+          bbBAMap.insert(std::make_pair(&*b, ba));        
+
+        }
+      }
+
+    }
+
+/*
+
     // COMPUTA PARA CADA BLOCO O QUE TA VIVO ANTES E DEPOIS
     // Do this using a worklist algorithm (where the items in the worklist are basic blocks).
-    void computeBBBeforeAfter(Function &F, DenseMap<const BasicBlock*, genKill> &bbGKMap,
+    void _computeBBBeforeAfter(Function &F, DenseMap<const BasicBlock*, genKill> &bbGKMap,
                               DenseMap<const BasicBlock*, beforeAfter> &bbBAMap)
     {
       SmallVector<BasicBlock*, 32> workList;
@@ -137,6 +190,7 @@ namespace {
       }
     }
     
+*/
     //COMPUTA PARA CADA INSTRUCAO O QUE TA VIVO ANTES E DEPOIS
     void computeIBeforeAfter(Function &F, DenseMap<const BasicBlock*, beforeAfter> &bbBAMap,
                               DenseMap<const Instruction*, beforeAfter> &iBAMap)
@@ -177,6 +231,8 @@ namespace {
     virtual bool runOnFunction(Function &F) {
        // Iterate over the instructions in F, creating a map from instruction address to unique integer.
       
+      static int removeCount = 0;
+
       errs() << "BEGIN:" << F.getName() << '\n';
 
       addToMap(F);
@@ -212,14 +268,14 @@ namespace {
       i = 0;
       for(DenseMap<const BasicBlock*, beforeAfter>::iterator iter = bbBAMap.begin(); iter!= bbBAMap.end(); ++iter){
 
-        errs() << "%" << i++ << ": { ";
+        errs() << "%%" << i++ << ": { ";
         std::for_each(iter->second.before.begin(), iter->second.before.end(), print_elem);
         errs() << "} { ";
         std::for_each(iter->second.after.begin(), iter->second.after.end(), print_elem);
         errs() << "}\n";
       }
 
-      return changed;
+      //return changed;
 
       DenseMap<const Instruction*, beforeAfter> iBAMap;
       computeIBeforeAfter(F, bbBAMap, iBAMap);
@@ -238,6 +294,48 @@ namespace {
       }
 
       errs() << "END:" << F.getName() << '\n';
+
+      // fazer a remoção doida!!
+      std::queue < Instruction * > delQueue;
+      for (inst_iterator i = inst_begin(F), E = inst_end(F); i != E; ++i) {
+          beforeAfter s = iBAMap.lookup(&*i);
+
+          // if instruction not in live out
+          if(!s.after.count(&*i)){
+
+              if(!i->mayHaveSideEffects()){
+                    errs() << "QUERO REMOVER A INST: " << instMap.lookup(&*i) << "\n\n";
+                  if(!isa<TerminatorInst>(&*i)){
+
+                    if(!isa<DbgInfoIntrinsic>(&*i)){
+                      if(!isa<LandingPadInst>(&*i)){
+                        errs() << "TO AQUI MANOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOW\n\n";
+                        delQueue.push(&*i);
+
+                      } 
+                    } 
+                  }
+              }
+          }
+
+
+      }
+
+      errs() << "REMOVED: " << delQueue.size() << "\n\n"; 
+
+      while ( delQueue.size() )
+      {
+        errs() << "AQUI Antes\n";
+        changed = true;
+        Instruction * I = delQueue.front();
+        delQueue.pop();
+        I->eraseFromParent();
+        removeCount++;
+        errs() << "AQUI depois\n";
+
+      }
+
+      errs() << "TO AQUI LELEK LEK NO PASSINHO DO VOLANTE\n";
 
       return changed;
     }
