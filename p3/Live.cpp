@@ -25,7 +25,7 @@ namespace {
  DenseMap<const Instruction*, int> instMap;
 
   void print_elem(const Instruction* i) {
-    errs() << instMap.lookup(i) << " ";
+    /////errs() << /*instMap.lookup(i)*/ i->getName() << " ";
   }
     
   class genKill {
@@ -50,7 +50,7 @@ namespace {
       for (inst_iterator i = inst_begin(F), E = inst_end(F); i != E; ++i, ++id){
         // Convert the iterator to a pointer, and insert the pair
         instMap.insert(std::make_pair(&*i, id));
-        errs() << ">>>> " << id << ": " <<  i->getName() << "  \n";
+        /////errs() << ">>>> " << id << ": " <<  i->getName() << "  \n";
 	    }
     }
 
@@ -76,9 +76,8 @@ namespace {
           // For the KILL set, you can use the set of all instructions
           // that are in the block (which safely includes all of the
           // pseudo-registers assigned to in the block).
-          if(isa<BinaryOperator>(*i) || isa<LoadInst>(*i) || isa<CallInst>(*i)){
-            s.kill.insert(&*i);
-          }
+          s.kill.insert(&*i);
+          
         }
         bbMap.insert(std::make_pair(&*b, s));
       }
@@ -87,22 +86,22 @@ namespace {
     void computeBBBeforeAfter(Function &F, DenseMap<const BasicBlock*, genKill> &bbGKMap,
                               DenseMap<const BasicBlock*, beforeAfter> &bbBAMap){
 
+      int changed = 1;
+      while(changed != 0){
 
-      bool stop;
-      while(stop){
+        ///////errs() << "DENTRO DO WHILE\n";
+        changed = 0;
 
-        stop = true;
-        for (Function::iterator b = F.begin(), e = F.end(); b != e; ++b) {
-
-          
+        for (Function::iterator b = F.begin(), e = F.end(); b != e; ++b) {          
+          ///////errs()<<"DENTRO DO FOR\n";
+         
           beforeAfter ba = bbBAMap.lookup(&*b);
           beforeAfter oldBA;
-          genKill gk = bbGKMap.lookup(&*b);
-
-
 
           oldBA.after = ba.after;
           oldBA.before = ba.before;
+
+          genKill gk = bbGKMap.lookup(&*b);
 
           // COMPUTA BEFORE
           // before = after - KILL + GEN
@@ -113,14 +112,22 @@ namespace {
           // + GEN
           ba.before.insert(gk.gen.begin(), gk.gen.end());
 
-
           // COMPUTA AFTER
+          std::set<const Instruction*> a;
           for (succ_iterator SI = succ_begin(b), E = succ_end(b); SI != E; ++SI) {
             std::set<const Instruction*> s(bbBAMap.lookup(*SI).before);
-            ba.after.insert(s.begin(), s.end());
+            a.insert(s.begin(), s.end());
           }
+          ba.after = a;
 
-          if(!(ba.after == oldBA.after && ba.before == oldBA.before)) stop = false;
+          //if(!oldBA.after == a){
+          if(!(ba.after == oldBA.after && ba.before == oldBA.before)){ 
+            ///////errs() << "AQUI NO CHANGED\n";
+            changed++;
+          }
+          else{
+            ///////errs() << "AQUI NO NOT CHANGED\n";
+          }
 
           // update
           bbBAMap.erase(&*b);
@@ -162,11 +169,11 @@ namespace {
         }
 
         // SE INSTRUCOES QUE SAEM DE B SAO DIFERENTES DAS QUE ENTRAM NOS SUCCS
-        errs() << "¨¨¨¨A:" << a.size() << "  BFA:" << b_beforeAfter.after.size() << "\n";
+        /////errs() << "¨¨¨¨A:" << a.size() << "  BFA:" << b_beforeAfter.after.size() << "\n";
         if (a != b_beforeAfter.after || a.size()==0){
             shouldAddPred = true;
         }
-          //errs() << "a!= beforeAfter.after\n";
+          ///////errs() << "a!= beforeAfter.after\n";
         b_beforeAfter.after = a;
           // before = after - KILL + GEN
         b_beforeAfter.before.clear();
@@ -183,7 +190,7 @@ namespace {
           bbBAMap.erase(&*b);
           bbBAMap.insert(std::make_pair(&*b, b_beforeAfter));
         // SE B NAO TAVA NO MAP, OU NAO ESTAVA CERTO AINDA
-          errs() << "Caiu no shouldAddPred\n";
+          /////errs() << "Caiu no shouldAddPred\n";
           for (pred_iterator PI = pred_begin(b), E = pred_end(b); PI != E; ++PI)
             workList.push_back(*PI);
         }
@@ -233,11 +240,11 @@ namespace {
       
       static int removeCount = 0;
 
-      errs() << "BEGIN:" << F.getName() << '\n';
+      /////errs() << "BEGIN:" << F.getName() << '\n';
 
       addToMap(F);
 
-      errs() << "DEPOIS DO ADD\n";
+      /////errs() << "DEPOIS DO ADD\n";
       bool changed = false;
 
       // LLVM Value classes already have use information. But for the sake of learning, we will implement the iterative algorithm.
@@ -245,58 +252,57 @@ namespace {
       DenseMap<const BasicBlock*, genKill> bbGKMap;
       // For each basic block in the function, compute the block's GEN and KILL sets.
       computeBBGenKill(F, bbGKMap);
-      errs() << "DEPOIS DO computeBBGenKill\n";
+      /////errs() << "DEPOIS DO computeBBGenKill\n";
       
       int i = 0;
       for(DenseMap<const BasicBlock*, genKill>::iterator iter = bbGKMap.begin(); iter!= bbGKMap.end(); ++iter){
 
-        errs() << "%" << i++ << ": { ";
+        /////errs() << "%%" << i++ << ": { ";
         std::for_each(iter->second.gen.begin(), iter->second.gen.end(), print_elem);
-        errs() << "} { ";
+        /////errs() << "} { ";
         std::for_each(iter->second.kill.begin(), iter->second.kill.end(), print_elem);
-        errs() << "}\n\n";
+        /////errs() << "}\n\n";
       }
-
 
 
       DenseMap<const BasicBlock*, beforeAfter> bbBAMap;
       // For each basic block in the function, compute the block's liveBefore and liveAfter sets.
       computeBBBeforeAfter(F, bbGKMap, bbBAMap);
-      errs() << "DEPOIS DO computeBBBeforeAfter\n";
+      /////errs() << "DEPOIS DO computeBBBeforeAfter\n";
 
 
       i = 0;
       for(DenseMap<const BasicBlock*, beforeAfter>::iterator iter = bbBAMap.begin(); iter!= bbBAMap.end(); ++iter){
 
-        errs() << "%%" << i++ << ": { ";
+        /////errs() << "%%" << i++ << ": { ";
         std::for_each(iter->second.before.begin(), iter->second.before.end(), print_elem);
-        errs() << "} { ";
+        /////errs() << "} { ";
         std::for_each(iter->second.after.begin(), iter->second.after.end(), print_elem);
-        errs() << "}\n";
+        /////errs() << "}\n";
       }
 
       //return changed;
 
       DenseMap<const Instruction*, beforeAfter> iBAMap;
       computeIBeforeAfter(F, bbBAMap, iBAMap);
-      errs() << "DEPOIS DO computeIBeforeAfter\n";
+      /////errs() << "DEPOIS DO computeIBeforeAfter\n";
 
 
       // LOOPA AS INSTRUCOES DE F
       for (inst_iterator i = inst_begin(F), E = inst_end(F); i != E; ++i) {
         //PEGA O MAP COM AS INSTRUCOES VIVAS ANTES E DEPOIS PARA A INTRUCAO I
         beforeAfter s = iBAMap.lookup(&*i);
-        errs() << "%" << instMap.lookup(&*i) << ": { ";
+        /////errs() << "%%" << instMap.lookup(&*i)<< ":" << *i << ": { ";
         std::for_each(s.before.begin(), s.before.end(), print_elem);
-        errs() << "} { ";
+        /////errs() << "} { ";
         std::for_each(s.after.begin(), s.after.end(), print_elem);
-        errs() << "}\n";
+        /////errs() << "}\n";
       }
 
-      errs() << "END:" << F.getName() << '\n';
+      /////errs() << "END:" << F.getName() << '\n';
 
       // fazer a remoção doida!!
-      std::queue < Instruction * > delQueue;
+      std::queue < inst_iterator > delQueue;
       for (inst_iterator i = inst_begin(F), E = inst_end(F); i != E; ++i) {
           beforeAfter s = iBAMap.lookup(&*i);
 
@@ -304,13 +310,11 @@ namespace {
           if(!s.after.count(&*i)){
 
               if(!i->mayHaveSideEffects()){
-                    errs() << "QUERO REMOVER A INST: " << instMap.lookup(&*i) << "\n\n";
                   if(!isa<TerminatorInst>(&*i)){
-
                     if(!isa<DbgInfoIntrinsic>(&*i)){
                       if(!isa<LandingPadInst>(&*i)){
-                        errs() << "TO AQUI MANOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOW\n\n";
-                        delQueue.push(&*i);
+                        /////errs() << "QUERO REMOVER A INST: " << instMap.lookup(&*i) << "\n\n";
+                        delQueue.push(i);
 
                       } 
                     } 
@@ -321,22 +325,22 @@ namespace {
 
       }
 
-      errs() << "REMOVED: " << delQueue.size() << "\n\n"; 
 
       while ( delQueue.size() )
       {
-        errs() << "AQUI Antes\n";
+        /////errs() << "AQUI Antes\n";
         changed = true;
-        Instruction * I = delQueue.front();
+        inst_iterator I = delQueue.front();
         delQueue.pop();
-        I->eraseFromParent();
+        (I)->eraseFromParent();
         removeCount++;
-        errs() << "AQUI depois\n";
+        /////errs() << "AQUI depois\n";
 
       }
 
-      errs() << "TO AQUI LELEK LEK NO PASSINHO DO VOLANTE\n";
-
+      /////errs() << "REMOVED: " << removeCount << "\n\n"; 
+      /////errs() << "TO AQUI LELEK LEK NO PASSINHO DO VOLANTE\n";
+      //if(changed)      exit(0);
       return changed;
     }
   };
